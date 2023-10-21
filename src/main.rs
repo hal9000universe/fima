@@ -1,4 +1,4 @@
-use chrono::NaiveDate;
+use chrono::{Duration, NaiveDate};
 use std::fs::File;
 use std::io::{Read, Write};
 use std::str::Split;
@@ -50,10 +50,11 @@ struct Product {
     name: String,
     price: f32,
     product_type: ProductType,
+    brand: String,
 }
 
 impl Product {
-    fn new(name: String, price: f32, product_type: ProductType) -> Product {
+    fn new(name: String, price: f32, product_type: ProductType, brand: String) -> Product {
         //! Create a new product
         //! by passing in a name, price and product_type
         // parse name (remove spaces, convert to lowercase)
@@ -62,6 +63,7 @@ impl Product {
             name,
             price,
             product_type,
+            brand: brand.trim().to_lowercase(),
         }
     }
 }
@@ -71,16 +73,18 @@ struct Purchase {
     product: Product,
     quantity: u32,
     date: NaiveDate,
+    shop: String,
 }
 
 impl Purchase {
-    fn new(product: Product, quantity: u32, date: NaiveDate) -> Purchase {
+    fn new(product: Product, quantity: u32, date: NaiveDate, shop: String) -> Purchase {
         //! Create a new purchase
         //! by passing in a product, quantity and date
         Purchase {
             product,
             quantity,
             date,
+            shop: shop.trim().to_lowercase(),
         }
     }
 
@@ -101,12 +105,14 @@ fn write_to_file(purchase: &Purchase, file_name: &str) {
     // write purchase to file if file is empty
     if file.metadata().unwrap().len() == 0 {
         let purchase_string: String = format!(
-            "{}, {}, {}, {}, {}",
+            "{}, {}, {}, {}, {}, {}, {}",
             purchase.product.name,
             purchase.product.price,
             purchase.product.product_type.to_string(),
+            purchase.product.brand,
             purchase.quantity,
-            purchase.date
+            purchase.date,
+            purchase.shop
         );
         file.write_all(purchase_string.as_bytes()).unwrap();
     } else {
@@ -114,12 +120,14 @@ fn write_to_file(purchase: &Purchase, file_name: &str) {
         let mut contents: String = String::new();
         file.read_to_string(&mut contents).unwrap();
         let purchase_string = format!(
-            "\n{}, {}, {}, {}, {}",
+            "\n{}, {}, {}, {}, {}, {}, {}",
             purchase.product.name,
             purchase.product.price,
             purchase.product.product_type.to_string(),
+            purchase.product.brand,
             purchase.quantity,
-            purchase.date
+            purchase.date,
+            purchase.shop
         );
         contents.push_str(&purchase_string);
         let mut file: File = File::create(file_name).unwrap();
@@ -152,10 +160,14 @@ fn cli_update() {
             }
         };
         // create product type
-        println!("Enter product type:");
+        println!("Enter product type (food, culture, technology, education, travel, presents, style, other):");
         let mut product_type: String = String::new();
         std::io::stdin().read_line(&mut product_type).unwrap();
         let product_type: ProductType = ProductType::from_string(&product_type.trim());
+        // brand
+        println!("Enter brand:");
+        let mut brand: String = String::new();
+        std::io::stdin().read_line(&mut brand).unwrap();
         // check quantity is an integer
         let quantity: u32 = loop {
             println!("Enter quantity:");
@@ -171,19 +183,24 @@ fn cli_update() {
         };
         // check date can be parsed
         let date: NaiveDate = loop {
-            println!("Enter date (yyyy-mm-dd):");
+            println!("Enter date (dd-mm-yyyy):");
             let mut date: String = String::new();
             std::io::stdin().read_line(&mut date).unwrap();
-            match NaiveDate::parse_from_str(&date, "%Y-%m-%d") {
+            date = date.trim().parse().unwrap();  // parse date
+            match NaiveDate::parse_from_str(date.as_str(), "%d-%m-%Y") {
                 Ok(date) => break date,
                 Err(_) => {
-                    println!("Date must be in the format yyyy-mm-dd");
+                    println!("Date must be in the format dd-mm-yyyy");
                     continue;
                 }
             }
         };
-        let product = Product::new(name, price, product_type);
-        let purchase = Purchase::new(product, quantity, date);
+        // shop
+        println!("Enter shop:");
+        let mut shop: String = String::new();
+        std::io::stdin().read_line(&mut shop).unwrap();
+        let product = Product::new(name, price, product_type, brand);
+        let purchase = Purchase::new(product, quantity, date, shop);
         write_to_file(&purchase, "purchase.txt");
         println!("Purchase added");
         println!("Add another purchase? (y/n)");
@@ -206,7 +223,9 @@ fn read_from_file(file_name: &str) -> Vec<Purchase> {
     for line in contents.lines() {
         let mut fields: Split<&str> = line.split(", ");
         // assert fields have correct types
-        if let (Some(name), Some(price), Some(product_type), Some(quantity), Some(date)) = (
+        if let (Some(name), Some(price), Some(product_type), Some(brand), Some(quantity), Some(date), Some(shop)) = (
+            fields.next(),
+            fields.next(),
             fields.next(),
             fields.next(),
             fields.next(),
@@ -218,11 +237,13 @@ fn read_from_file(file_name: &str) -> Vec<Purchase> {
                 name: String::from(name),
                 price: price.parse::<f32>().expect("price is not a float"),
                 product_type: ProductType::from_string(product_type),
+                brand: brand.to_string(),
             };
             let purchase = Purchase {
                 product,
                 quantity: quantity.parse::<u32>().expect("quantity is not an integer"),
                 date: date.parse::<NaiveDate>().expect("date cannot be parsed"),
+                shop: shop.to_string(),
             };
             // add purchase to purchases
             purchases.push(purchase);
@@ -319,6 +340,36 @@ fn exec_bucket_comparison() {
     compare_buckets(buckets);
 }
 
+enum TimeFrame {
+    Week,
+    Month,
+    Year,
+}
+
+fn compute_average_expenses(time_frame: TimeFrame) {
+    //! Compute average expenses per time_frame
+    //! by iterating over purchases and adding the value of each purchase
+    //! and dividing by the duration passed
+    let purchases: Vec<Purchase> = read_from_file("purchase.txt");
+    let mut total_value: f32 = 0.0;
+    let start: NaiveDate = purchases.first().unwrap().date;
+    let end: NaiveDate = purchases.last().unwrap().date;
+    let diff: i64 = end.signed_duration_since(start).num_days();
+    let duration: i64 = match time_frame {
+        TimeFrame::Week => diff / 7 + 1,
+        TimeFrame::Month => diff / 30 + 1,
+        TimeFrame::Year => diff / 365 + 1,
+    };
+    for purchase in purchases {
+        total_value += purchase.value();
+    }
+    println!(
+        "Average expenses per month: {}",
+        total_value / duration as f32
+    );
+}
+
 fn main() {
-    cli_update();
+    compute_average_expenses(TimeFrame::Week);
+    // cli_update();
 }

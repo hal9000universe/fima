@@ -2,3 +2,4 @@
 Cargo.lock
 purchase.txt
 /.idea
+.DS_Store
