@@ -1,3 +1,4 @@
+#![allow(unused)]
 use chrono::{NaiveDate};
 use std::fs::File;
 use std::io::{Read, Write};
@@ -370,6 +371,6 @@ fn compute_average_expenses(time_frame: TimeFrame) {
 }
 
 fn main() {
-    compute_average_expenses(TimeFrame::Week);
     // cli_update();
+    compute_average_expenses(TimeFrame::Month);
 }
